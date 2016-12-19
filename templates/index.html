@@ -1,0 +1,78 @@
+{{ define "navbar" }}
+{{ if .LoggedIn }}
+<ul class="nav navbar-nav">
+  <li class="dropdown">
+    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Graph<span class="caret"></span></a>
+    <ul class="dropdown-menu">
+      <li><a href="/?graph=distance-time">Distance / time</a></li>
+      <li><a href="/?graph=speed-time">Speed / time</a></li>
+      <li><a href="/?graph=elapsed-time">Elapsed / time</a></li>
+      <li><a href="/?graph=avgspeedperbpm-time">Avg speed per bpm / time</a></li>
+      <li><a href="/?graph=climb-time">Climb / time</a></li>
+    </ul>
+  </li>  
+</ul>
+{{ else }}
+{{ end }}
+{{ end }}
+
+{{ define "content" }}
+{{ if .LoggedIn }}
+
+<!-- d3.js -->
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+<!-- d3.js stuff -->
+<style>
+.axis--x path {
+  display: none;
+}
+
+.line {
+  fill: none;
+  stroke: steelblue;
+  stroke-width: 1.5px;
+}
+
+.dot {
+  stroke: #000;
+  r: 3.5;
+}
+
+.dot:hover {
+  r: 5;
+}
+</style>
+<svg width="960" height="500"></svg>
+
+
+<!-- Graph-specific code -->
+<script src="/static/graphs/common.js">
+</script>
+<script src="{{ .GraphScriptLink }}">
+</script>
+<script type="text/javascript">
+$.ajax({
+  type: "GET",
+  contentType: "application/json; charset=utf-8",
+  url: '/activities',
+  dataType: 'json',
+  async: true,
+  data: "{}", 
+  success: function (data) {
+     var goodData = data.filter(function (d) {
+       return d.type == "Ride" && !d.trainer && !d.manual;
+     });
+     drawGraph(goodData);
+
+  },
+  error: function (result) {}
+})  
+</script>
+{{ else }}
+<h3>Hello, stranger!</h3>
+
+This app provides trends of your performance over time, based on your Strava logs.
+Please log in to see your stats!
+{{ end }}
+{{ end }}
