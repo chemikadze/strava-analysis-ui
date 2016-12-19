@@ -1,24 +1,32 @@
 package main
 
 import (
-	"github.com/chemikadze/strava-analysis-ui/api"
+	"api"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/urlfetch"
 	"net/http"
 	"os"
 	"strconv"
 )
 
-func main() {
+func init() {
 	clientId, _ := strconv.Atoi(os.Getenv("STRAVA_CLIENT_ID"))
+	rootUrl := "http://localhost:8080"
+	if envRootUrl := os.Getenv("ROOT_URL"); len(envRootUrl) != 0 {
+		rootUrl = envRootUrl
+	}
 	params := api.Params{
-		"http://localhost:8080",
+		rootUrl,
 		clientId,
 		os.Getenv("STRAVA_CLIENT_SECRET"),
+		func(r *http.Request) *http.Client { return urlfetch.Client(appengine.NewContext(r)) },
 	}
-	apiService := api.NewApi()
+	apiService := api.NewApi(params)
 	appService := api.NewApp(params)
-	mux := http.NewServeMux()
-	apiService.AttachHandlers(mux)
-	appService.AttachHandlers(mux)
-	http.ListenAndServe(":8080", mux)
-	return
+	apiService.AttachHandlers(http.DefaultServeMux)
+	appService.AttachHandlers(http.DefaultServeMux)
+}
+
+func main() {
+	appengine.Main()
 }

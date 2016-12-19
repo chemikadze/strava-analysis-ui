@@ -1,0 +1,15 @@
+application: strava-analysis-ui
+version: '0-1-initial'
+module: default
+
+runtime: go
+api_version: go1
+
+env_variables:
+  STRAVA_CLIENT_ID: ''
+  STRAVA_CLIENT_SECRET: ''
+  ROOT_URL: http://localhost:8080
+
+handlers:
+- url: /.*
+  script: _go_app

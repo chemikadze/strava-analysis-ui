@@ -4,19 +4,24 @@ import (
 	"github.com/strava/go.strava"
 )
 
-type ActivityList []*strava.ActivitySummary
-type ActivityCache map[int64]ActivityList
+type ActivityCache interface {
+	Store(int64, ActivityList)
+	Get(int64) (ActivityList, bool)
+}
 
-func NewActivityCache() *ActivityCache {
-	cache := make(ActivityCache)
+type ActivityList []*strava.ActivitySummary
+type MapActivityCache map[int64]ActivityList
+
+func NewActivityCache() ActivityCache {
+	cache := make(MapActivityCache)
 	return &cache
 }
 
-func (c *ActivityCache) Store(athleteId int64, activities ActivityList) {
+func (c *MapActivityCache) Store(athleteId int64, activities ActivityList) {
 	(*c)[athleteId] = activities
 }
 
-func (c *ActivityCache) Get(athleteId int64) (ActivityList, bool) {
+func (c *MapActivityCache) Get(athleteId int64) (ActivityList, bool) {
 	if activities, ok := (*c)[athleteId]; ok {
 		return activities, true
 	} else {

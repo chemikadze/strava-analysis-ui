@@ -33,7 +33,7 @@ type templateContext struct {
 func NewApp(params Params) *AnalysisApp {
 	auth := &strava.OAuthAuthenticator{
 		CallbackURL:            params.RootUrl + "/exchange_token",
-		RequestClientGenerator: nil,
+		RequestClientGenerator: params.RequestClientGenerator,
 	}
 	strava.ClientId = params.ClientId
 	strava.ClientSecret = params.ClientSecret

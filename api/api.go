@@ -12,19 +12,22 @@ import (
 var pageSize = 200
 
 type Params struct {
-	RootUrl      string
-	ClientId     int
-	ClientSecret string
+	RootUrl                string
+	ClientId               int
+	ClientSecret           string
+	RequestClientGenerator func(r *http.Request) *http.Client
 }
 
 type AnalysisApi struct {
-	ActivityCache *ActivityCache
+	ActivityCache ActivityCache
+	Params        Params
 }
 
-func NewApi() *AnalysisApi {
+func NewApi(params Params) *AnalysisApi {
 	cache := NewActivityCache()
 	return &AnalysisApi{
 		cache,
+		params,
 	}
 }
 
@@ -33,13 +36,26 @@ func (api *AnalysisApi) AttachHandlers(mux *http.ServeMux) {
 }
 
 func (api *AnalysisApi) getActivities(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintln(w, r) // TODO proper json response
+		}
+	}()
+
 	// YOLO error handling
 	tokenCookie, _ := r.Cookie(cookieStravaToken)
 	token := tokenCookie.Value
 	athleteCookie, _ := r.Cookie(cookieAthleteId)
 	athleteIdInt, _ := strconv.Atoi(athleteCookie.Value)
 	athleteId := int64(athleteIdInt)
-	client := strava.NewClient(token)
+	var client *strava.Client
+	if api.Params.RequestClientGenerator != nil {
+		httpClient := api.Params.RequestClientGenerator(r)
+		client = strava.NewClient(token, httpClient)
+	} else {
+		client = strava.NewClient(token)
+	}
+
 	athletes := strava.NewAthletesService(client)
 	fullActivities := make(ActivityList, 0)
 	if cached, ok := api.ActivityCache.Get(athleteId); ok {
@@ -53,7 +69,7 @@ func (api *AnalysisApi) getActivities(w http.ResponseWriter, r *http.Request) {
 			activities, err := call.Do()
 			if err != nil {
 				log.Fatal(err)
-				w.Write([]byte(err.Error())) // TODO
+				fmt.Fprintln(w, err.Error()) // TODO proper json response
 				return
 			}
 			if len(activities) == 0 {
