@@ -2,12 +2,16 @@ package api
 
 import (
 	"fmt"
+	"github.com/chemikadze/strava-analysis-ui/templates"
+	"github.com/chemikadze/strava-analysis-ui/ui/static"
 	"github.com/strava/go.strava"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
 	"html/template"
-	"log"
 	"net/http"
-	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -30,9 +34,13 @@ type templateContext struct {
 	GraphScriptLink string
 }
 
+func callbackUrl(rootUrl string) string {
+	return rootUrl + "/exchange_token"
+}
+
 func NewApp(params Params) *AnalysisApp {
 	auth := &strava.OAuthAuthenticator{
-		CallbackURL:            params.RootUrl + "/exchange_token",
+		CallbackURL:            callbackUrl(params.RootUrl),
 		RequestClientGenerator: params.RequestClientGenerator,
 	}
 	strava.ClientId = params.ClientId
@@ -48,21 +56,19 @@ func forceAtoI64(s string) int64 {
 	return int64(x)
 }
 
-func (api *AnalysisApp) AttachHandlers(mux *http.ServeMux) {
-	mux.HandleFunc("/", api.getIndex)
-	mux.HandleFunc("/logout", api.getLogout)
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("ui/static"))))
-
-	path, err := api.auth.CallbackPath()
+func (app *AnalysisApp) AttachHandlers(mux *http.ServeMux) {
+	path, err := app.auth.CallbackPath()
 	if err != nil {
-		// possibly that the callback url set above is invalid
-		fmt.Println(err)
-		os.Exit(1)
+		panic(err)
 	}
-	mux.HandleFunc(path, api.auth.HandlerFunc(api.oAuthSuccess, api.oAuthFailure))
+
+	mux.HandleFunc("/", app.getIndex)
+	mux.HandleFunc("/logout", app.getLogout)
+	mux.Handle("/static/", http.StripPrefix("/static/", new(StaticServer)))
+	mux.HandleFunc(path, app.auth.HandlerFunc(app.oAuthSuccess, app.oAuthFailure))
 }
 
-func (api *AnalysisApp) graphFromRequest(r *http.Request) string {
+func (app *AnalysisApp) graphFromRequest(r *http.Request) string {
 	query := r.URL.Query()
 	graph, ok := query["graph"]
 	if !ok {
@@ -71,39 +77,79 @@ func (api *AnalysisApp) graphFromRequest(r *http.Request) string {
 	return fmt.Sprintf("/static/graphs/%s.js", graph[0])
 }
 
-func (api *AnalysisApp) getTemplateContext(r *http.Request) templateContext {
+func (app *AnalysisApp) getTemplateContext(r *http.Request) templateContext {
 	athleteIdCookie, err := r.Cookie(cookieAthleteId)
 	athleteNameCookie, _ := r.Cookie(cookieAthleteName)
 	if err != nil || len(athleteIdCookie.Value) == 0 {
+		ctx := appengine.NewContext(r)
+		defaultHostname, _ := appengine.ModuleHostname(ctx, "", "", "")
+		log.Debugf(ctx, "Default hostname: %s", defaultHostname)
+		// TODO: not thread-safe
+		if !strings.Contains(app.auth.CallbackURL, defaultHostname) {
+			app.auth.CallbackURL = callbackUrl("http://" + defaultHostname)
+		}
 		return templateContext{
 			LoggedIn:  false,
-			LoginLink: api.auth.AuthorizationURL("state1", strava.Permissions.Public, true),
+			LoginLink: app.auth.AuthorizationURL("state1", strava.Permissions.Public, true),
 		}
 	} else {
 		return templateContext{
 			LoggedIn:        true,
 			AthleteName:     athleteNameCookie.Value,
 			AthleteId:       forceAtoI64(athleteIdCookie.Value),
-			GraphScriptLink: api.graphFromRequest(r),
+			GraphScriptLink: app.graphFromRequest(r),
 		}
 	}
 }
 
-func (api *AnalysisApp) getIndex(w http.ResponseWriter, r *http.Request) {
-	log.Println(r.URL)
+type StaticServer struct{}
+
+func (StaticServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	asset, err := static.Asset(r.URL.Path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Write(asset)
+}
+
+func parseTemplateResources(names ...string) (result *template.Template) {
+	result = template.New(filepath.Base(names[0]))
+	for _, filename := range names {
+		name := filepath.Base(filename)
+		var templ *template.Template
+		if result.Name() == name {
+			templ = result
+		} else {
+			templ = result.New(name)
+		}
+		asset, err := templates.Asset(filename)
+		if err != nil {
+			panic(fmt.Sprintf("Can not locate template %s", filename))
+		}
+		_, err = templ.Parse(string(asset))
+		if err != nil {
+			panic(fmt.Sprintf("Can not parse template: %s", err.Error()))
+		}
+	}
+	return result
+}
+
+func (app *AnalysisApp) getIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	ctx := api.getTemplateContext(r)
-	template, _ := template.ParseFiles("templates/main.html", "templates/index.html")
+	ctx := app.getTemplateContext(r)
+	template := parseTemplateResources("templates/main.html", "templates/index.html")
+
 	err := template.ExecuteTemplate(w, "main", ctx)
 	if err != nil {
 		fmt.Fprintf(w, "<h1>Oops, something went wrong</h1>%s", err.Error())
 	}
 }
 
-func (api *AnalysisApp) oAuthSuccess(auth *strava.AuthorizationResponse, w http.ResponseWriter, r *http.Request) {
+func (app *AnalysisApp) oAuthSuccess(auth *strava.AuthorizationResponse, w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: cookieStravaToken, Value: auth.AccessToken})
 	http.SetCookie(w, &http.Cookie{Name: cookieAthleteName, Value: auth.Athlete.FirstName})
 	http.SetCookie(w, &http.Cookie{Name: cookieAthleteId, Value: strconv.Itoa(int(auth.Athlete.Id))})
@@ -111,7 +157,7 @@ func (api *AnalysisApp) oAuthSuccess(auth *strava.AuthorizationResponse, w http.
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (api *AnalysisApp) oAuthFailure(err error, w http.ResponseWriter, r *http.Request) {
+func (app *AnalysisApp) oAuthFailure(err error, w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Authorization Failure:\n")
 
 	// some standard error checking
@@ -129,7 +175,7 @@ func (api *AnalysisApp) oAuthFailure(err error, w http.ResponseWriter, r *http.R
 	}
 }
 
-func (api *AnalysisApp) getLogout(w http.ResponseWriter, r *http.Request) {
+func (app *AnalysisApp) getLogout(w http.ResponseWriter, r *http.Request) {
 	for _, cookie := range r.Cookies() {
 		http.SetCookie(w, &http.Cookie{Name: cookie.Name, Value: "", Expires: epoch})
 	}

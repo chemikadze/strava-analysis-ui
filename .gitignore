@@ -1,4 +1,5 @@
 .DS_Store
 .settings
-app.deploy.yaml
-app.local.yaml
+app.*.yaml
+bindata.go
+main

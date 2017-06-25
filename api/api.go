@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/strava/go.strava"
-	"log"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
 	"net/http"
 	"strconv"
 )
@@ -36,6 +37,8 @@ func (api *AnalysisApi) AttachHandlers(mux *http.ServeMux) {
 }
 
 func (api *AnalysisApi) getActivities(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintln(w, r) // TODO proper json response
@@ -65,10 +68,10 @@ func (api *AnalysisApi) getActivities(w http.ResponseWriter, r *http.Request) {
 			call := athletes.ListActivities(athleteId)
 			call.PerPage(pageSize)
 			call.Page(page)
-			log.Printf("Loading athlete %s page %s", athleteId, page)
+			log.Debugf(ctx, "Loading athlete %s page %s", athleteId, page)
 			activities, err := call.Do()
 			if err != nil {
-				log.Fatal(err)
+				log.Criticalf(ctx, err.Error())
 				fmt.Fprintln(w, err.Error()) // TODO proper json response
 				return
 			}
