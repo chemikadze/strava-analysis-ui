@@ -6,6 +6,9 @@ function drawGraph(data) {
         titleY: "Avg speed per bpm",
         predicate: function(d) {
             return !!d.average_heartrate;
+        },
+        clusterBy: function(d) {
+            return d.gear_id;
         }
     });
 }

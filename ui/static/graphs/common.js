@@ -1,11 +1,41 @@
+function getListOfClusters(data) {
+    var clusters = [];
+    for (var i = 0; i < data.length; i++) {
+        var pos = clusters.indexOf(data[i]);
+        if (pos < 0) {
+            clusters.push([data[i], 1]);
+        } else {
+            clusters[pos][1] += 1;
+        }
+    }
+    clusters.sort(function (a, b) {
+        return b[1] - a[1]; // descending order
+    });
+    return clusters.map(function (a) {
+        return a[0];
+    });
+}
+
+function getClusterId(clusterFeature, clusters) {
+    return clusters.indexOf(clusterFeature);
+}
+
+function getClusterColor(clusterId, colors) {
+    return colors[clusterId % colors.length];
+}
+
 function scatterPlotCustom(data, meta) {
 
     var predicate = meta.predicate || function(x) { return true };
     var calcX = meta.calcX || function(d) { return parseTime(d.start_date); }
     var calcY = meta.calcY;
     var titleY = meta.titleY || "";
+    var clusterBy = meta.clusterBy || function(d) { return null; }
+    var clusterColors = ["#FF0000", "#00D200", "#0000FF", "#FF00FF", "#00FFFF", "#FFFF00"];
 
     data = data.filter(predicate);
+
+    var clusters = getListOfClusters(data.map(clusterBy));
 
     var parseTime = d3.isoParse;  
 
@@ -50,6 +80,6 @@ function scatterPlotCustom(data, meta) {
         .attr("class", "dot")
         .attr("cx", function(d) { return x(calcX(d)); })
         .attr("cy", function(d) { return y(calcY(d)); })
-        .style("fill", function(d) { return "#FF0000"; })
+        .style("fill", function(d) { return getClusterColor(getClusterId(clusterBy(d), clusters), clusterColors); })
         .on('click', function(d) { window.open("https://www.strava.com/activities/" + d.id); }, true);
 }
