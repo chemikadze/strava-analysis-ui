@@ -4,14 +4,15 @@
   <li class="dropdown">
     <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Graph<span class="caret"></span></a>
     <ul class="dropdown-menu">
-      <li><a href="/?graph=distance-time">Distance / time</a></li>
       <li><a href="/?graph=speed-time">Speed / time</a></li>
+      <li><a href="/?graph=distance-time">Distance / time</a></li>
       <li><a href="/?graph=elapsed-time">Elapsed / time</a></li>
+      <li><a href="/?graph=climb-time">Climb / time</a></li>
+      <li><a href="/?graph=avgpower-time">Avg power / time</a></li>
       <li><a href="/?graph=avgspeedperbpm-time">Avg speed per bpm / time</a></li>
       <li><a href="/?graph=avgpowerperbpm-time">Avg power per bpm / time</a></li>
-      <li><a href="/?graph=climb-time">Climb / time</a></li>
     </ul>
-  </li>  
+  </li>
 </ul>
 {{ else }}
 {{ end }}
@@ -69,7 +70,7 @@ $.ajax({
   url: '/activities',
   dataType: 'json',
   async: true,
-  data: "{}", 
+  data: "{}",
   success: function (data) {
      var goodData = data.filter(function (d) {
        return d.type == "Ride" && !d.trainer && !d.manual;
@@ -79,9 +80,9 @@ $.ajax({
   },
   error: function (result) {
     $(".progress").hide();
-    $(".alert").toggleClass("hidden");    
+    $(".alert").toggleClass("hidden");
   }
-})  
+})
 </script>
 {{ else }}
 <h3>Hello, stranger!</h3>
