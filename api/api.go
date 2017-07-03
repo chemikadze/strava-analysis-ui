@@ -122,10 +122,14 @@ func (api *AnalysisApi) retrieveActivity(ctx context.Context, client *strava.Cli
 			}
 		}
 
-		return &ExtendedActivityInfo{
+		activityInfo := ExtendedActivityInfo{
 			Activity:     activity,
 			ZonesSummary: hrZone,
 		}
+
+		api.ActivityCache.StoreActivity(activityId, &activityInfo)
+
+		return &activityInfo
 	}
 }
 
