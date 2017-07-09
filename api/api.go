@@ -18,11 +18,12 @@ type Params struct {
 	ClientId               int
 	ClientSecret           string
 	RequestClientGenerator func(r *http.Request) *http.Client
+	ActivityCacheAccessor  func(ctx context.Context) ActivityCache
+	ZonesEnabled           bool
 }
 
 type AnalysisApi struct {
-	ActivityCache ActivityCache
-	Params        Params
+	Params Params
 }
 
 type ZoneInfoResponse struct {
@@ -35,16 +36,16 @@ type ActivityZoneInfo struct {
 }
 
 func NewApi(params Params) *AnalysisApi {
-	cache := NewActivityCache()
 	return &AnalysisApi{
-		cache,
 		params,
 	}
 }
 
 func (api *AnalysisApi) AttachHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/activities", api.getActivities)
-	// mux.HandleFunc("/zones", api.getZonesData)
+	if api.Params.ZonesEnabled {
+		mux.HandleFunc("/zones", api.getZonesData)
+	}
 }
 
 func (api *AnalysisApi) getStravaClient(r *http.Request) (client *strava.Client) {
@@ -70,14 +71,15 @@ func (api *AnalysisApi) getAthleteId(r *http.Request) int64 {
 func (api *AnalysisApi) retrieveActivities(ctx context.Context, client *strava.Client, athleteId int64) (fullActivities ActivityList) {
 	athletes := strava.NewAthletesService(client)
 	fullActivities = make(ActivityList, 0)
-	if cached, ok := api.ActivityCache.Get(athleteId); ok {
+	cache := api.Params.ActivityCacheAccessor(ctx)
+	if cached, ok := cache.Get(athleteId); ok {
 		fullActivities = cached
 	} else {
 		for page := 1; ; page++ {
 			call := athletes.ListActivities(athleteId)
 			call.PerPage(pageSize)
 			call.Page(page)
-			log.Debugf(ctx, "Loading athlete %s page %s", athleteId, page)
+			log.Debugf(ctx, "Loading athlete %v page %v", athleteId, page)
 			activities, err := call.Do()
 			if err != nil {
 				log.Criticalf(ctx, err.Error())
@@ -88,16 +90,17 @@ func (api *AnalysisApi) retrieveActivities(ctx context.Context, client *strava.C
 			}
 			fullActivities = append(fullActivities, activities...)
 		}
-		api.ActivityCache.Store(athleteId, fullActivities)
+		cache.Store(athleteId, fullActivities)
 	}
 	return fullActivities
 }
 
 func (api *AnalysisApi) retrieveActivity(ctx context.Context, client *strava.Client, activityId int64) *ExtendedActivityInfo {
-	if activity, ok := api.ActivityCache.GetActivity(activityId); ok {
+	cache := api.Params.ActivityCacheAccessor(ctx)
+	if activity, ok := cache.GetActivity(activityId); ok {
 		return activity
 	} else {
-		log.Debugf(ctx, "did not find activity %s in cache, downloading", activityId)
+		log.Debugf(ctx, "did not find activity %v in cache, downloading", activityId)
 		activitiesService := strava.NewActivitiesService(client)
 		activityCall := activitiesService.Get(activityId)
 		activity, err := activityCall.Do()
@@ -127,7 +130,7 @@ func (api *AnalysisApi) retrieveActivity(ctx context.Context, client *strava.Cli
 			ZonesSummary: hrZone,
 		}
 
-		api.ActivityCache.StoreActivity(activityId, &activityInfo)
+		cache.StoreActivity(activityId, &activityInfo)
 
 		return &activityInfo
 	}

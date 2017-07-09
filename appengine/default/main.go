@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/chemikadze/strava-analysis-ui/api"
+	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/urlfetch"
 	"log"
@@ -33,6 +34,21 @@ func resolveUrlFetchFunc(r *http.Request) *http.Client {
 	}
 }
 
+func newCacheFactory() func(ctx context.Context) api.ActivityCache {
+	log.Printf("Using cache impl: %s", api.DEFAULT_CACHE_IMPL)
+	if api.DEFAULT_CACHE_IMPL == "memory" {
+		cache := api.NewMapActivityCache()
+		return func(ctx context.Context) api.ActivityCache { return cache }
+	} else if api.DEFAULT_CACHE_IMPL == "file" {
+		cache := api.NewDefaultFileActivityCache()
+		return func(ctx context.Context) api.ActivityCache { return cache }
+	} else if api.DEFAULT_CACHE_IMPL == "datastore" {
+		return func(ctx context.Context) api.ActivityCache { return api.NewDatastoreActivityCache(ctx) }
+	} else {
+		panic("Unknown cache impl: " + api.DEFAULT_CACHE_IMPL)
+	}
+}
+
 func init() {
 	clientId, _ := strconv.Atoi(getEnvOrPanic("STRAVA_CLIENT_ID", ""))
 	if clientId == 0 {
@@ -40,12 +56,15 @@ func init() {
 	}
 	clientSecret := getEnvOrPanic("STRAVA_CLIENT_SECRET", "")
 	rootUrl := getEnvOrPanic("ROOT_URL", "http://localhost:8080")
+	zonesEnabled := getEnvOrPanic("STRAVA_ZONES_ENABLED", "false") == "true"
 
 	params := api.Params{
 		rootUrl,
 		clientId,
 		clientSecret,
 		resolveUrlFetchFunc,
+		newCacheFactory(),
+		zonesEnabled,
 	}
 	apiService := api.NewApi(params)
 	appService := api.NewApp(params)
