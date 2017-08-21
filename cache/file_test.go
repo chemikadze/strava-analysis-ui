@@ -1,4 +1,4 @@
-package api
+package cache
 
 import (
 	"github.com/strava/go.strava"
@@ -64,7 +64,7 @@ func TestFileCacheCanGetActivityList(t *testing.T) {
 		// // TODO: failing
 		// equal = reflect.DeepEqual(expectedActivities, loadedActivities)
 		// if !equal {
-		// 	t.Error("Activities should be deep equal!")
+		//  t.Error("Activities should be deep equal!")
 		// }
 	} else {
 		t.Error("cache.Get should return ok after storing activity!")
@@ -100,7 +100,7 @@ func TestFileCacheCanGetActivity(t *testing.T) {
 		// // TODO: failing
 		// equal = reflect.DeepEqual(expectedActivity, loadedActivity)
 		// if !equal {
-		// 	t.Error("Activities should be deep equal!")
+		//  t.Error("Activities should be deep equal!")
 		// }
 	} else {
 		t.Error("cache.GetActivity should return ok after storing activity!")

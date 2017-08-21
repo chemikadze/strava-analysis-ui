@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/chemikadze/strava-analysis-ui/cache"
 	"github.com/strava/go.strava"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
@@ -18,21 +19,27 @@ type Params struct {
 	ClientId               int
 	ClientSecret           string
 	RequestClientGenerator func(r *http.Request) *http.Client
-	ActivityCacheAccessor  func(ctx context.Context) ActivityCache
+	ActivityCacheAccessor  func(ctx context.Context) cache.ActivityCache
 	ZonesEnabled           bool
+	StaticServerType       string
 }
+
+const (
+	RESOURCE_STATIC = "bindata"
+	FILE_STATIC     = "file"
+)
 
 type AnalysisApi struct {
 	Params Params
 }
 
 type ZoneInfoResponse struct {
-	activities []ActivityZoneInfo
+	Activities []ActivityZoneInfo
 }
 
 type ActivityZoneInfo struct {
-	activityInfo *strava.ActivitySummary
-	zoneInfo     *strava.ZonesSummary
+	ActivityInfo *strava.ActivitySummary
+	ZoneInfo     *strava.ZonesSummary
 }
 
 func NewApi(params Params) *AnalysisApi {
@@ -68,11 +75,11 @@ func (api *AnalysisApi) getAthleteId(r *http.Request) int64 {
 	return athleteId
 }
 
-func (api *AnalysisApi) retrieveActivities(ctx context.Context, client *strava.Client, athleteId int64) (fullActivities ActivityList) {
+func (api *AnalysisApi) retrieveActivities(ctx context.Context, client *strava.Client, athleteId int64) (fullActivities cache.ActivityList) {
 	athletes := strava.NewAthletesService(client)
-	fullActivities = make(ActivityList, 0)
-	cache := api.Params.ActivityCacheAccessor(ctx)
-	if cached, ok := cache.Get(athleteId); ok {
+	fullActivities = make(cache.ActivityList, 0)
+	cacheClient := api.Params.ActivityCacheAccessor(ctx)
+	if cached, ok := cacheClient.Get(athleteId); ok {
 		fullActivities = cached
 	} else {
 		for page := 1; ; page++ {
@@ -90,30 +97,30 @@ func (api *AnalysisApi) retrieveActivities(ctx context.Context, client *strava.C
 			}
 			fullActivities = append(fullActivities, activities...)
 		}
-		cache.Store(athleteId, fullActivities)
+		cacheClient.Store(athleteId, fullActivities)
 	}
 	return fullActivities
 }
 
-func (api *AnalysisApi) retrieveActivity(ctx context.Context, client *strava.Client, activityId int64) *ExtendedActivityInfo {
-	cache := api.Params.ActivityCacheAccessor(ctx)
-	if activity, ok := cache.GetActivity(activityId); ok {
-		return activity
+func (api *AnalysisApi) retrieveActivity(ctx context.Context, client *strava.Client, activityId int64) (*cache.ExtendedActivityInfo, error) {
+
+	cacheClient := api.Params.ActivityCacheAccessor(ctx)
+	if activity, ok := cacheClient.GetActivity(activityId); ok {
+		log.Debugf(ctx, "using activity %v from cache", activityId)
+		return activity, nil
 	} else {
 		log.Debugf(ctx, "did not find activity %v in cache, downloading", activityId)
 		activitiesService := strava.NewActivitiesService(client)
 		activityCall := activitiesService.Get(activityId)
 		activity, err := activityCall.Do()
 		if err != nil {
-			log.Criticalf(ctx, err.Error())
-			panic(err.Error())
+			return nil, err
 		}
 
 		zonesCall := activitiesService.ListZones(activityId)
 		zones, err := zonesCall.Do()
 		if err != nil {
-			log.Criticalf(ctx, err.Error())
-			panic(err.Error())
+			return nil, err
 		}
 
 		var hrZone *strava.ZonesSummary
@@ -125,14 +132,14 @@ func (api *AnalysisApi) retrieveActivity(ctx context.Context, client *strava.Cli
 			}
 		}
 
-		activityInfo := ExtendedActivityInfo{
+		activityInfo := cache.ExtendedActivityInfo{
 			Activity:     activity,
 			ZonesSummary: hrZone,
 		}
 
-		cache.StoreActivity(activityId, &activityInfo)
+		cacheClient.StoreActivity(activityId, &activityInfo)
 
-		return &activityInfo
+		return &activityInfo, nil
 	}
 }
 
@@ -141,6 +148,7 @@ func (api *AnalysisApi) getActivities(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if r := recover(); r != nil {
+			log.Warningf(ctx, "Recovered: %v", r)
 			fmt.Fprintln(w, r) // TODO proper json response
 		}
 	}()
@@ -158,6 +166,7 @@ func (api *AnalysisApi) getZonesData(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if r := recover(); r != nil {
+			log.Warningf(ctx, "Recovered: %v", r)
 			fmt.Fprintln(w, r) // TODO proper json response
 		}
 	}()
@@ -167,15 +176,22 @@ func (api *AnalysisApi) getZonesData(w http.ResponseWriter, r *http.Request) {
 	fullActivities := api.retrieveActivities(ctx, client, athleteId)
 	histogramData := make([]ActivityZoneInfo, 0)
 	for _, activity := range fullActivities {
-		activityExtended := api.retrieveActivity(ctx, client, activity.Id)
+		if activity.Private {
+			continue
+		}
+		activityExtended, err := api.retrieveActivity(ctx, client, activity.Id)
+		if err != nil {
+			log.Warningf(ctx, "Failed to retrieve activity %v: %v", activity.Id, err.Error())
+			continue
+		}
 		zoneInfo := ActivityZoneInfo{
-			activityInfo: activity,
-			zoneInfo:     activityExtended.ZonesSummary,
+			ActivityInfo: activity,
+			ZoneInfo:     activityExtended.ZonesSummary,
 		}
 		histogramData = append(histogramData, zoneInfo)
 	}
 	response := ZoneInfoResponse{
-		activities: histogramData,
+		Activities: histogramData,
 	}
 	content, _ := json.MarshalIndent(response, "", " ")
 	fmt.Fprint(w, string(content))

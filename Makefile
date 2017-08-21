@@ -2,7 +2,7 @@ default: bindata test
 	go build ./appengine/default/main.go
 .PHONY: default
 
-deps: 
+deps:
 	go get github.com/jteeuwen/go-bindata/go-bindata
 	go get github.com/strava/go.strava
 	go get google.golang.org/appengine
@@ -18,7 +18,7 @@ bindata: templates/bindata.go ui/static/bindata.go
 .PHONY: bindata
 
 test: bindata
-	go test ./api/ ./appengine/default/
+	go test ./cache/ ./api/ ./appengine/default/
 .PHONY: test
 
 deploy: bindata	test
@@ -31,8 +31,8 @@ clean:
 	rm -f templates/bindata.go
 	rm -f ui/static/bindata.go
 .PHONY: clean
-	
+
 localserver: bindata test
 	envsubst < appengine/default/app.yaml > appengine/default/app.expanded.yaml && \
-	dev_appserver.py appengine/default/app.expanded.yaml
+	dev_appserver.py ${ADDITIONAL_LOCALSERVER_PARAMS} --log_level debug appengine/default/app.expanded.yaml
 .PHONY: localserver

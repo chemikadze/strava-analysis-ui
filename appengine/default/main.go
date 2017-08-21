@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/chemikadze/strava-analysis-ui/api"
+	"github.com/chemikadze/strava-analysis-ui/cache"
 	"golang.org/x/net/context"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/urlfetch"
@@ -34,18 +35,24 @@ func resolveUrlFetchFunc(r *http.Request) *http.Client {
 	}
 }
 
-func newCacheFactory() func(ctx context.Context) api.ActivityCache {
-	log.Printf("Using cache impl: %s", api.DEFAULT_CACHE_IMPL)
-	if api.DEFAULT_CACHE_IMPL == "memory" {
-		cache := api.NewMapActivityCache()
-		return func(ctx context.Context) api.ActivityCache { return cache }
-	} else if api.DEFAULT_CACHE_IMPL == "file" {
-		cache := api.NewDefaultFileActivityCache()
-		return func(ctx context.Context) api.ActivityCache { return cache }
-	} else if api.DEFAULT_CACHE_IMPL == "datastore" {
-		return func(ctx context.Context) api.ActivityCache { return api.NewDatastoreActivityCache(ctx) }
+func newCacheFactory() func(ctx context.Context) cache.ActivityCache {
+	log.Printf("Using cache impl: %s", cache.DEFAULT_CACHE_IMPL)
+	if cache.DEFAULT_CACHE_IMPL == "memory" {
+		instance := cache.NewMapActivityCache()
+		return func(ctx context.Context) cache.ActivityCache { return instance }
+	} else if cache.DEFAULT_CACHE_IMPL == "file" {
+		instance := cache.NewDefaultFileActivityCache()
+		return func(ctx context.Context) cache.ActivityCache { return instance }
+	} else if cache.DEFAULT_CACHE_IMPL == "datastore" {
+		return func(ctx context.Context) cache.ActivityCache { return cache.NewDatastoreActivityCache(ctx) }
+	} else if cache.DEFAULT_CACHE_IMPL == "googlestorage" {
+		bucket := getEnvOrPanic("STRAVA_CACHE_BUCKET", "")
+		prefix := os.Getenv("STRAVA_CACHE_PREFIX")
+		return func(ctx context.Context) cache.ActivityCache {
+			return cache.NewGoogleStorageActivityCache(ctx, bucket, prefix)
+		}
 	} else {
-		panic("Unknown cache impl: " + api.DEFAULT_CACHE_IMPL)
+		panic("Unknown cache impl: " + cache.DEFAULT_CACHE_IMPL)
 	}
 }
 
@@ -57,6 +64,7 @@ func init() {
 	clientSecret := getEnvOrPanic("STRAVA_CLIENT_SECRET", "")
 	rootUrl := getEnvOrPanic("ROOT_URL", "http://localhost:8080")
 	zonesEnabled := getEnvOrPanic("STRAVA_ZONES_ENABLED", "false") == "true"
+	staticServerType := getEnvOrPanic("STATIC_SERVER_TYPE", api.RESOURCE_STATIC)
 
 	params := api.Params{
 		rootUrl,
@@ -65,6 +73,7 @@ func init() {
 		resolveUrlFetchFunc,
 		newCacheFactory(),
 		zonesEnabled,
+		staticServerType,
 	}
 	apiService := api.NewApi(params)
 	appService := api.NewApp(params)

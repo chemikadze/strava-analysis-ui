@@ -64,7 +64,7 @@ func (app *AnalysisApp) AttachHandlers(mux *http.ServeMux) {
 
 	mux.HandleFunc("/", app.getIndex)
 	mux.HandleFunc("/logout", app.getLogout)
-	mux.Handle("/static/", http.StripPrefix("/static/", new(StaticServer)))
+	mux.Handle("/static/", NewStaticServer(app.Params.StaticServerType))
 	mux.HandleFunc(path, app.auth.HandlerFunc(app.oAuthSuccess, app.oAuthFailure))
 }
 
@@ -90,7 +90,7 @@ func (app *AnalysisApp) getTemplateContext(r *http.Request) templateContext {
 		}
 		return templateContext{
 			LoggedIn:  false,
-			LoginLink: app.auth.AuthorizationURL("state1", strava.Permissions.Public, true),
+			LoginLink: app.auth.AuthorizationURL("state1", strava.Permissions.ViewPrivate, true),
 		}
 	} else {
 		return templateContext{
@@ -102,9 +102,21 @@ func (app *AnalysisApp) getTemplateContext(r *http.Request) templateContext {
 	}
 }
 
+func NewStaticServer(serverType string) http.Handler {
+	if serverType == FILE_STATIC {
+		return http.StripPrefix("/static/", http.FileServer(http.Dir("ui/static")))
+	} else if serverType == RESOURCE_STATIC {
+		return http.StripPrefix("/static/", &StaticServer{})
+	} else {
+		return nil
+	}
+}
+
 type StaticServer struct{}
 
 func (StaticServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := appengine.NewContext(r)
+	log.Infof(ctx, "Seen: %v", r.URL)
 	asset, err := static.Asset(r.URL.Path)
 	if err != nil {
 		http.NotFound(w, r)

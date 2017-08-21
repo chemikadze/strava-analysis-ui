@@ -8,10 +8,15 @@ env_variables:
   STRAVA_CLIENT_ID: '${STRAVA_CLIENT_ID}'
   STRAVA_CLIENT_SECRET: '${STRAVA_CLIENT_SECRET}'
   ROOT_URL: '${ROOT_URL}'
-  STRAVA_CACHE_IMPL: '${STRAVA_CACHE_IMPL}'
-  STRAVA_CACHE_ROOT: '${STRAVA_CACHE_ROOT}'
-  ZONES_ENABLED: '%{ZONES_ENABLED}'
+  STRAVA_CACHE_IMPL: '${STRAVA_CACHE_IMPL}' # choice: memory, file, datastore, googlestorage
+  STRAVA_CACHE_ROOT: '${STRAVA_CACHE_ROOT}' # file only
+  STRAVA_CACHE_BUCKET: '${STRAVA_CACHE_BUCKET}' # googlestorage only
+  STRAVA_CACHE_PREFIX: '${STRAVA_CACHE_PREFIX}' # googlestorage only
+  STRAVA_ZONES_ENABLED: '${STRAVA_ZONES_ENABLED}'
+  STATIC_SERVER_TYPE: '${STATIC_SERVER_TYPE}'
 
 handlers:
+- url: /static/graphs
+  static_dir: ../../ui/static/graphs
 - url: /.*
   script: _go_app
