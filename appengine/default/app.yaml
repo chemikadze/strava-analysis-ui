@@ -16,7 +16,7 @@ env_variables:
   STATIC_SERVER_TYPE: '${STATIC_SERVER_TYPE}'
 
 handlers:
-- url: /static/graphs
-  static_dir: ../../ui/static/graphs
+# - url: /static/graphs
+#   static_dir: ../../ui/static/graphs
 - url: /.*
   script: _go_app
